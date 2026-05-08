@@ -4,10 +4,8 @@ import time
 import pygame
 import numpy as np
 import math
-from ultralytics import YOLO
-import torch
 
-# ================== 核心配置（新增高速稳定控制参数） ==================
+# 核心配置（重点优化红绿灯相关参数）
 CONFIG = {
     "CARLA_HOST": "localhost",
     "CARLA_PORT": 2000,
