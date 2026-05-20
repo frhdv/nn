@@ -43,7 +43,7 @@ CONFIG = {
     "CRITICAL_BRAKE_DISTANCE": 4
 }
 
-# 全局状态
+# Global state
 need_vehicle_reset = False
 current_speed_limit = CONFIG["DEFAULT_CRUISE_SPEED"]
 current_steer = 0.0
@@ -55,21 +55,21 @@ acc_active = False
 frame_count = 0
 smooth_front_distance = 999
 smooth_filter_alpha = 0.3
-# ========== 新增：天气全局状态 ==========
-current_weather = "晴天"
+current_weather = "Clear"
+
 weather_presets = {
-    pygame.K_1: ("晴天", carla.WeatherParameters.ClearNoon),
-    pygame.K_2: ("阴天", carla.WeatherParameters.CloudyNoon),
-    pygame.K_3: ("小雨", carla.WeatherParameters.SoftRainNoon),
-    pygame.K_4: ("大雨", carla.WeatherParameters.HardRainNoon),
-    pygame.K_5: ("黑夜", carla.WeatherParameters.ClearNight),
-    pygame.K_0: ("晴天", carla.WeatherParameters.ClearNoon)
+    pygame.K_1: ("Clear", carla.WeatherParameters.ClearNoon),
+    pygame.K_2: ("Cloudy", carla.WeatherParameters.CloudyNoon),
+    pygame.K_3: ("LightRain", carla.WeatherParameters.SoftRainNoon),
+    pygame.K_4: ("HeavyRain", carla.WeatherParameters.HardRainNoon),
+    pygame.K_5: ("Night", carla.WeatherParameters.ClearNight),
+    pygame.K_0: ("Clear", carla.WeatherParameters.ClearNoon)
 }
 
 
 def init_pygame(width, height):
     pygame.init()
-    pygame.display.set_caption("CARLA 天气快捷切换")
+    pygame.display.set_caption("CARLA V5.1")
     return pygame.display.set_mode((width, height))
 
 
@@ -78,7 +78,7 @@ def process_image(image):
     return array.reshape((image.height, image.width, 4))[:, :, :3].copy()
 
 
-# YOLO模型
+# YOLO model
 model = YOLO("yolov8n.pt")
 TRAFFIC_CLASSES = {9: "stop sign", 8: "traffic light", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 CAR_HEIGHT = 1.5
@@ -154,12 +154,12 @@ def detect_traffic(image_np, vehicle_transform):
                 front_vehicle_exist = True
 
             detected.append(
-                (label, f"{dist:.1f}m{'(本车道)' if is_front else ''}", conf, (int(x1), int(y1), int(x2), int(y2))))
+                (label, f"{dist:.1f}m{'(F)' if is_front else ''}", conf, (int(x1), int(y1), int(x2), int(y2))))
 
         else:
             detected.append((label, None, conf, (int(x1), int(y1), int(x2), int(y2))))
 
-    # 平滑距离
+    # Smooth distance
     if front_vehicle_exist:
         smooth_front_distance = smooth_front_distance * 0.7 + front_vehicle_distance * 0.3
         front_vehicle_distance = smooth_front_distance
@@ -196,7 +196,7 @@ def get_steer(v_transform, wp_transform, speed):
     cross = v_forward.x * dir_vec.y - v_forward.y * dir_vec.x
     if cross < 0: angle *= -1
 
-    # 速度越高转向越轻
+    # Speed-based steering gain
     speed_gain = max(0.2, 1.0 - (speed / 60) * 0.8)
     final_steer = angle * 1.0 * speed_gain
 
@@ -222,7 +222,7 @@ def get_intersection_dist(vehicle, map):
 def on_collision(event):
     global need_vehicle_reset, current_steer, current_throttle, acc_active, smooth_front_distance
     need_vehicle_reset = True
-    print(f"碰撞！强度：{event.normal_impulse.length():.1f}，准备重置")
+    print(f"Collision! Force: {event.normal_impulse.length():.1f}")
     current_steer = 0.0
     current_throttle = 0.0
     acc_active = False
@@ -245,7 +245,7 @@ def optimize_physics(vehicle):
     ]
     physics.mass = 1800
     vehicle.apply_physics_control(physics)
-    print("车辆物理参数优化完成")
+    print("Physics optimized")
 
 
 def spawn_front_cars(vehicle, world, map, bp_lib, actor_list):
@@ -262,38 +262,38 @@ def spawn_front_cars(vehicle, world, map, bp_lib, actor_list):
             car.set_autopilot(True)
             actor_list.append(car)
             count += 1
-    print(f"前方生成测试车辆：{count}辆")
+    print(f"Front cars spawned: {count}")
     return count
 
 
 def main():
     global need_vehicle_reset, current_speed_limit, current_steer, smooth_camera_pos, current_throttle
     global front_vehicle_distance, front_vehicle_exist, acc_active, frame_count, smooth_front_distance
-    global current_weather  # 新增
+    global current_weather
     actor_list = []
     try:
-        # 连接CARLA
+        # Connect to CARLA
         client = carla.Client(CONFIG["CARLA_HOST"], CONFIG["CARLA_PORT"])
         client.set_timeout(10.0)
         world = client.get_world()
         map = world.get_map()
         bp_lib = world.get_blueprint_library()
 
-        # 生成主车
+        # Spawn ego vehicle
         vehicle_bp = bp_lib.filter("vehicle.tesla.model3")[0]
         spawn_point = random.choice(map.get_spawn_points())
         vehicle = world.spawn_actor(vehicle_bp, spawn_point)
         actor_list.append(vehicle)
-        print("主车生成成功")
+        print("Ego vehicle spawned")
         optimize_physics(vehicle)
 
-        # 碰撞传感器
+        # Collision sensor
         collision_bp = bp_lib.find("sensor.other.collision")
         collision_sensor = world.spawn_actor(collision_bp, carla.Transform(), attach_to=vehicle)
         collision_sensor.listen(on_collision)
         actor_list.append(collision_sensor)
 
-        # 生成交通
+        # Spawn traffic
         front_cars = spawn_front_cars(vehicle, world, map, bp_lib, actor_list)
         traffic_count = random.randint(6, 10)
         for _ in range(traffic_count):
@@ -302,9 +302,9 @@ def main():
             if car:
                 car.set_autopilot(True)
                 actor_list.append(car)
-        print(f"背景车辆：{traffic_count}辆")
+        print(f"Background cars: {traffic_count}")
 
-        # 生成限速标志
+        # Spawn speed signs
         speed_signs = []
         speeds = [30, 40, 50, 60]
         sign_bps = [bp for bp in bp_lib if 'static.prop.speedlimit' in bp.id]
@@ -318,7 +318,7 @@ def main():
                     speed_signs.append(sign)
                     actor_list.append(sign)
 
-        # 车载摄像头
+        # Camera
         camera_bp = bp_lib.find("sensor.camera.rgb")
         camera_bp.set_attribute("image_size_x", str(CONFIG["CAMERA_WIDTH"]))
         camera_bp.set_attribute("image_size_y", str(CONFIG["CAMERA_HEIGHT"]))
@@ -333,12 +333,12 @@ def main():
 
         camera.listen(image_callback)
 
-        # 初始化显示
+        # Initialize display
         display = init_pygame(CONFIG["CAMERA_WIDTH"], CONFIG["CAMERA_HEIGHT"])
         clock = pygame.time.Clock()
         font = pygame.font.SysFont("Arial", 20, bold=True)
 
-        # 平滑视角
+        # Smooth camera
         spectator = world.get_spectator()
 
         def update_spectator():
@@ -356,32 +356,18 @@ def main():
 
             spectator.set_transform(carla.Transform(smooth_camera_pos, target_rot))
 
-        # 主循环
+        # Main loop
         while True:
             frame_count += 1
-            # ========== 新增：天气快捷切换事件监听 ==========
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                    return
-                # 数字键切换天气
-                if event.type == pygame.KEYDOWN and event.key in weather_presets:
-                    weather_name, weather_params = weather_presets[event.key]
-                    world.set_weather(weather_params)
-                    current_weather = weather_name
-                    print(f"已切换天气：{weather_name}")
 
-            update_spectator()
-            control = carla.VehicleControl()
-            current_speed = get_speed(vehicle)
-            v_transform = vehicle.get_transform()
-
-            # 碰撞重置
+            # Vehicle reset (highest priority)
             if need_vehicle_reset:
+                control = carla.VehicleControl()
                 control.throttle = 0.0
                 control.brake = 1.0
                 control.steer = 0.0
                 vehicle.apply_control(control)
-                time.sleep(1)
+                time.sleep(0.5)
 
                 new_spawn = random.choice(map.get_spawn_points())
                 vehicle.set_transform(new_spawn)
@@ -395,16 +381,36 @@ def main():
                 current_throttle = 0.0
                 acc_active = False
                 smooth_front_distance = 999
-                print(f"车辆已重置到：{new_spawn.location}")
+                print(f"Vehicle reset to: {new_spawn.location}")
                 continue
 
-            # 目标检测
+            # Event handling
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                    return
+                # Weather switch
+                if event.type == pygame.KEYDOWN and event.key in weather_presets:
+                    weather_name, weather_params = weather_presets[event.key]
+                    world.set_weather(weather_params)
+                    current_weather = weather_name
+                    print(f"Weather changed: {weather_name}")
+                # Manual reset (lowercase r only, turn off caps lock)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                    need_vehicle_reset = True
+                    print("Manual reset requested")
+
+            update_spectator()
+            control = carla.VehicleControl()
+            current_speed = get_speed(vehicle)
+            v_transform = vehicle.get_transform()
+
+            # Object detection
             detected_list = []
             tl_state = None
             if image_surface[0] is not None and frame_count % 2 == 0:
                 detected_list, tl_state = detect_traffic(image_surface[0], v_transform)
 
-            # 紧急制动（最高优先级）
+            # Emergency brake (highest priority)
             emergency_brake = False
             if front_vehicle_exist and front_vehicle_distance < CONFIG["EMERGENCY_BRAKE_DISTANCE"]:
                 if front_vehicle_distance < CONFIG["CRITICAL_BRAKE_DISTANCE"]:
@@ -418,7 +424,7 @@ def main():
                 emergency_brake = True
 
             if not emergency_brake:
-                # ACC跟车（次高优先级）
+                # ACC cruise control
                 target_speed = current_speed_limit
                 acc_active = False
                 if front_vehicle_exist:
@@ -431,7 +437,7 @@ def main():
                         target_speed = current_speed_limit * (front_vehicle_distance / safe_dist)
                         target_speed = max(0, target_speed)
 
-                # 红绿灯停车（只有当前方没有车时才执行）
+                # Traffic light stop
                 else:
                     intersection_dist = get_intersection_dist(vehicle, map)
                     native_tl = vehicle.get_traffic_light_state().name
@@ -446,12 +452,12 @@ def main():
                                 target_speed = current_speed * (intersection_dist / stop_dist) * 0.5
                                 target_speed = max(0, target_speed)
 
-                # 路口预减速
+                # Intersection pre-deceleration
                 intersection_dist = get_intersection_dist(vehicle, map)
                 if intersection_dist < 30:
                     target_speed = min(target_speed, CONFIG["INTERSECTION_SPEED"])
 
-                # 横向转向控制
+                # Lateral steering control
                 preview_dist = min(10, 3 + current_speed / 10)
                 wp = map.get_waypoint(v_transform.location, project_to_road=True, lane_type=carla.LaneType.Driving)
                 next_wps = wp.next(preview_dist)
@@ -468,7 +474,7 @@ def main():
                     current_steer = max(-1.0, min(1.0, current_steer + steer_change))
                     control.steer = current_steer
 
-                # 纵向速度控制
+                # Longitudinal speed control
                 speed_error = target_speed - current_speed
                 if speed_error > 1:
                     target_throttle = min(0.4, 0.3 * speed_error)
@@ -486,44 +492,46 @@ def main():
 
                 vehicle.apply_control(control)
 
-            # 画面渲染
+            # Render
             if image_surface[0] is not None:
                 surface = pygame.image.frombuffer(image_surface[0].tobytes(),
                                                   (CONFIG["CAMERA_WIDTH"], CONFIG["CAMERA_HEIGHT"]), "RGB")
                 display.blit(surface, (0, 0))
 
-                # 绘制检测框
+                # Draw detection boxes
                 for label, info, conf, bbox in detected_list:
                     x1, y1, x2, y2 = bbox
-                    color = (255, 0, 0) if "(本车道)" in str(info) else (0, 255, 0)
+                    color = (255, 0, 0) if "(F)" in str(info) else (0, 255, 0)
                     pygame.draw.rect(display, color, (x1, y1, x2 - x1, y2 - y1), 2)
                     label_text = font.render(f"{label} {info}", True, (255, 255, 255), (0, 0, 0))
                     display.blit(label_text, (x1, y1 - 20))
 
-                # ========== 新增：显示当前天气状态 ==========
-                pygame.draw.rect(display, (0, 0, 0), (10, 10, 200, 140), border_radius=5)
-                speed_text = font.render(f" {current_speed:.1f} km/h", True, (0, 255, 0))
-                limit_text = font.render(f" {current_speed_limit} km/h", True, (255, 255, 0))
-                acc_text = font.render(f"ACC: {'A' if acc_active else 'B'}", True,
+                # Status display
+                pygame.draw.rect(display, (0, 0, 0), (10, 10, 200, 160), border_radius=5)
+                speed_text = font.render(f"Speed: {current_speed:.1f} km/h", True, (0, 255, 0))
+                limit_text = font.render(f"Limit: {current_speed_limit} km/h", True, (255, 255, 0))
+                acc_text = font.render(f"ACC: {'ON' if acc_active else 'OFF'}", True,
                                        (255, 165, 0) if acc_active else (200, 200, 200))
-                distance_text = font.render(f"{front_vehicle_distance:.1f}m", True,
+                distance_text = font.render(f"Front: {front_vehicle_distance:.1f}m", True,
                                             (255, 0, 0) if front_vehicle_distance < 10 else (0, 255, 0))
-                weather_text = font.render(f"天气: {current_weather}", True, (0, 255, 255))
+                weather_text = font.render(f"Weather: {current_weather}", True, (0, 255, 255))
+                hint_text = font.render("Press R to reset", True, (200, 200, 200))
 
                 display.blit(speed_text, (20, 20))
                 display.blit(limit_text, (20, 45))
                 display.blit(acc_text, (20, 70))
                 display.blit(distance_text, (20, 95))
                 display.blit(weather_text, (20, 120))
+                display.blit(hint_text, (20, 145))
 
                 pygame.display.flip()
 
             clock.tick(CONFIG["PYGAME_FPS"])
 
     except Exception as e:
-        print(f"错误: {e}")
+        print(f"Error: {e}")
     finally:
-        print("清理资源...")
+        print("Cleaning up...")
         for actor in actor_list:
             if actor and 'sensor' in actor.type_id:
                 try:
@@ -538,7 +546,7 @@ def main():
                 except:
                     pass
         pygame.quit()
-        print("程序结束")
+        print("Program ended")
 
 
 if __name__ == "__main__":
