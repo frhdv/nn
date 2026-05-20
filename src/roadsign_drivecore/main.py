@@ -528,6 +528,7 @@ def main():
 
             clock.tick(CONFIG["PYGAME_FPS"])
 
+
     except Exception as e:
         print(f"Error: {e}")
     finally:
