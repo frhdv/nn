@@ -2,12 +2,20 @@
 
 读取视频文件，逐帧执行步骤3的高级流水线，对连续帧的
 多项式拟合系数做指数移动平均（EMA）平滑，减少相邻帧之间的抖动。
+输出文件名为 `step04_<原视频名>_output.avi`，避免多个视频互相覆盖。
 """
+import os
 import cv2
 import numpy as np
 
-from config import CONFIG
-from lane_advanced import process_frame, draw_lane_on_original
+from lane_advanced import process_frame, draw_lane_on_original, compute_lane_metrics
+"""
+import os
+import cv2
+import numpy as np
+
+from lane_advanced import process_frame, draw_lane_on_original, compute_lane_metrics
+from lane_warning import compute_warning_level
 
 
 def smooth_fit(new_fit, prev_fit, alpha):
@@ -57,9 +65,15 @@ def run_video_pipeline(video_path, save_dir=None, alpha=0.3, show=False):
     print(f"EMA 平滑系数: alpha={alpha}")
 
     writer = None
+    out_path = None
     if save_dir:
         save_dir = str(save_dir)
-        out_path = f"{save_dir}/step04_video_output.avi"
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        out_path = f"{save_dir}/step04_{base_name}_output.avi"
+    if save_dir:
+        save_dir = str(save_dir)
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        out_path = f"{save_dir}/step04_{base_name}_output.avi"
         fourcc = cv2.VideoWriter_fourcc(*"XVID")
         writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
@@ -95,8 +109,17 @@ def run_video_pipeline(video_path, save_dir=None, alpha=0.3, show=False):
 
         # 用平滑后的曲线重新绘制
         if left_fitx is not None and right_fitx is not None:
+            # 使用平滑后的系数计算曲率与偏移
+            metrics = compute_lane_metrics(smooth_left, smooth_right,
+                                           left_fitx, right_fitx, width)
+            # 计算车道偏离预警级别
+            warning = compute_warning_level(metrics)
             display = draw_lane_on_original(frame, binary_warped, Minv,
-                                            left_fitx, right_fitx, ploty)
+                                            left_fitx, right_fitx, ploty,
+                                            metrics=metrics)
+            display = draw_lane_on_original(frame, binary_warped, Minv,
+                                            left_fitx, right_fitx, ploty,
+                                            metrics=metrics, warning=warning)
         else:
             display = result_img
 
@@ -120,6 +143,7 @@ def run_video_pipeline(video_path, save_dir=None, alpha=0.3, show=False):
     cap.release()
     if writer:
         writer.release()
+        print(f"输出视频已保存至: {out_path}")
         print(f"输出视频已保存至: {save_dir}/step04_video_output.avi")
     if show:
         cv2.destroyAllWindows()
