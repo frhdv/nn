@@ -625,6 +625,7 @@ def main():
                     pass
         time.sleep(1.5)
 
+
         for actor in actor_list:
             if actor:
                 try:
