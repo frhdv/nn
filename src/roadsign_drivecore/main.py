@@ -609,6 +609,7 @@ def main():
                 pygame.display.flip()
 
             clock.tick(CONFIG["PYGAME_FPS"])
+
     except Exception as e:
         log(f"Error: {e}")
     finally:
